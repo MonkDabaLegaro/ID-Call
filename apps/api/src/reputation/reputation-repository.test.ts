@@ -3,6 +3,7 @@ import {
   InMemoryReputationRepository,
   isReportCategory,
   scoreStoredReports,
+  type StoredReputationReport,
 } from './reputation-repository.js';
 
 const subject = {
@@ -12,6 +13,27 @@ const subject = {
   numberType: 'MOBILE',
 };
 const reporter = { id: 'reporter-1', trust: 0.25 };
+const now = new Date('2026-08-25T12:00:00Z');
+
+function report(
+  id: string,
+  reporterId: string,
+  category: StoredReputationReport['category'],
+  trust: number,
+  ageDays = 0,
+): StoredReputationReport {
+  const updatedAt = new Date(now.getTime() - ageDays * 24 * 60 * 60 * 1000);
+  return {
+    id,
+    reporterId,
+    category,
+    reporterTrust: trust,
+    createdAt: updatedAt,
+    updatedAt,
+    expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+    withdrawnAt: null,
+  };
+}
 
 describe('reputation repository', () => {
   it('starts with unknown reputation', async () => {
@@ -33,7 +55,6 @@ describe('reputation repository', () => {
   });
 
   it('excludes expired and withdrawn reports', async () => {
-    const now = new Date('2026-08-25T12:00:00Z');
     const repository = new InMemoryReputationRepository(() => now);
     const stored = await repository.upsert(subject, reporter, 'scam');
     expect(await repository.list(subject.number, now)).toHaveLength(1);
@@ -48,13 +69,32 @@ describe('reputation repository', () => {
     expect(await repository.withdraw(stored.report.id, 'reporter-2')).toBe(false);
   });
 
-  it('scores submitted scam reports as risk evidence', async () => {
-    const repository = new InMemoryReputationRepository();
-    await repository.upsert(subject, { id: 'r1', trust: 0.5 }, 'scam');
-    const result = scoreStoredReports(await repository.list(subject.number));
+  it('keeps one fresh low-trust scam report below high risk', () => {
+    const result = scoreStoredReports([report('1', 'r1', 'scam', 0.25)], now);
     expect(result.reports).toBe(1);
-    expect(result.score).toBe(0.5);
-    expect(result.level).toBe('medium');
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.score).toBeLessThan(0.75);
+    expect(result.level).not.toBe('high');
+  });
+
+  it('decays older evidence with a sixty-day half-life', () => {
+    const fresh = scoreStoredReports([report('1', 'r1', 'scam', 0.75, 0)], now);
+    const aged = scoreStoredReports([report('2', 'r2', 'scam', 0.75, 60)], now);
+    expect(aged.score).toBeLessThan(fresh.score);
+  });
+
+  it('rewards agreement across independent reporters', () => {
+    const agreeing = scoreStoredReports([
+      report('1', 'r1', 'scam', 0.75),
+      report('2', 'r2', 'scam', 0.75),
+      report('3', 'r3', 'scam', 0.75),
+    ], now);
+    const conflicting = scoreStoredReports([
+      report('4', 'r4', 'scam', 0.75),
+      report('5', 'r5', 'legitimate_business', 0.75),
+      report('6', 'r6', 'telemarketing', 0.75),
+    ], now);
+    expect(agreeing.score).toBeGreaterThan(conflicting.score);
   });
 
   it('accepts only controlled report categories', () => {

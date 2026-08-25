@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ReputationEvidence, ReputationResult } from '@id-call/reputation-domain';
-import { scoreReputation } from '@id-call/reputation-domain';
+import type { ReputationLevel, ReputationResult } from '@id-call/reputation-domain';
 
 export const REPORT_CATEGORIES = [
   'spam',
@@ -50,6 +49,7 @@ export interface ReputationRepository {
 }
 
 const REPORT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const DECAY_HALF_LIFE_MS = 60 * 24 * 60 * 60 * 1000;
 
 export class InMemoryReputationRepository implements ReputationRepository {
   private readonly reports = new Map<string, StoredReputationReport[]>();
@@ -138,10 +138,44 @@ export function isReportCategory(value: unknown): value is ReportCategory {
   return typeof value === 'string' && (REPORT_CATEGORIES as readonly string[]).includes(value);
 }
 
-export function scoreStoredReports(reports: StoredReputationReport[]): ReputationResult {
-  const evidence: ReputationEvidence[] = reports.map((report) => ({
-    weight: CATEGORY_WEIGHT[report.category],
-    confidence: report.reporterTrust,
-  }));
-  return scoreReputation(evidence);
+function temporalDecay(updatedAt: Date, now: Date): number {
+  const ageMs = Math.max(0, now.getTime() - updatedAt.getTime());
+  return Math.pow(0.5, ageMs / DECAY_HALF_LIFE_MS);
+}
+
+function levelFor(score: number): ReputationLevel {
+  return score >= 0.75 ? 'high' : score >= 0.4 ? 'medium' : 'low';
+}
+
+export function scoreStoredReports(
+  reports: StoredReputationReport[],
+  now: Date = new Date(),
+): ReputationResult {
+  if (reports.length === 0) return { score: 0, level: 'unknown', reports: 0 };
+
+  const weighted = reports.map((report) => {
+    const effectiveWeight = Math.max(0, Math.min(1, report.reporterTrust)) * temporalDecay(report.updatedAt, now);
+    return {
+      category: report.category,
+      risk: CATEGORY_WEIGHT[report.category],
+      effectiveWeight,
+    };
+  });
+  const totalWeight = weighted.reduce((sum, item) => sum + item.effectiveWeight, 0);
+  if (totalWeight <= 0) return { score: 0, level: 'low', reports: reports.length };
+
+  const baseRisk = weighted.reduce((sum, item) => sum + item.risk * item.effectiveWeight, 0) / totalWeight;
+  const byCategory = new Map<ReportCategory, number>();
+  for (const item of weighted) {
+    byCategory.set(item.category, (byCategory.get(item.category) ?? 0) + item.effectiveWeight);
+  }
+  const largestCategoryWeight = Math.max(...byCategory.values());
+  const agreement = largestCategoryWeight / totalWeight;
+  const volumeConfidence = Math.min(1, totalWeight / 2);
+  const score = Math.max(0, Math.min(
+    1,
+    baseRisk * (0.5 + 0.5 * agreement) * (0.5 + 0.5 * volumeConfidence),
+  ));
+
+  return { score, level: levelFor(score), reports: reports.length };
 }

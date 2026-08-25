@@ -7,6 +7,16 @@ data class EvidenceDto(
     val observedAt: String,
 )
 
+data class CallerIdentityDto(
+    val displayName: String,
+    val identityType: String,
+    val verification: String,
+    val confidence: Double,
+    val publicWebsite: String?,
+    val publicAddress: String?,
+    val expiresAt: String?,
+)
+
 data class LocationDto(
     val label: String?,
     val precision: String,
@@ -26,6 +36,7 @@ data class LookupResponseDto(
     val nationalNumber: String,
     val regionCode: String?,
     val numberType: String?,
+    val identity: CallerIdentityDto?,
     val location: LocationDto,
     val reputation: ReputationDto,
     val sources: List<EvidenceDto>,

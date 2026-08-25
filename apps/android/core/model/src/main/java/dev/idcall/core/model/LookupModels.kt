@@ -9,6 +9,18 @@ data class LookupEvidence(
     val observedAtEpochMs: Long,
 )
 
+data class LookupIdentity(
+    val displayName: String,
+    val identityType: String,
+    val verification: String,
+    val confidence: Double,
+    val publicWebsite: String?,
+    val publicAddress: String?,
+    val expiresAtEpochMs: Long?,
+) {
+    fun isActive(nowEpochMs: Long): Boolean = expiresAtEpochMs == null || expiresAtEpochMs > nowEpochMs
+}
+
 data class LookupRecord(
     val number: String,
     val countryCode: String,
@@ -23,14 +35,21 @@ data class LookupRecord(
     val reputationReports: Int,
     val evidence: List<LookupEvidence>,
     val cachedAtEpochMs: Long,
+    val identity: LookupIdentity? = null,
 ) {
     fun isFresh(nowEpochMs: Long, maxAgeMs: Long = DEFAULT_FRESHNESS_MS): Boolean {
         if (nowEpochMs < cachedAtEpochMs) return false
         return nowEpochMs - cachedAtEpochMs <= maxAgeMs
     }
 
+    fun displayLabel(nowEpochMs: Long): String =
+        identity?.takeIf { it.isActive(nowEpochMs) }?.displayName
+            ?: locationLabel
+            ?: regionCode
+            ?: number
+
     val displayLabel: String
-        get() = locationLabel ?: regionCode ?: number
+        get() = displayLabel(System.currentTimeMillis())
 }
 
 data class LookupHistoryItem(
