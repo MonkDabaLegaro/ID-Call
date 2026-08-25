@@ -25,7 +25,9 @@ describe('reputation repository', () => {
     const second = await repository.upsert(subject, reporter, 'scam');
     const reports = await repository.list(subject.number);
 
-    expect(second.id).toBe(first.id);
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.report.id).toBe(first.report.id);
     expect(reports).toHaveLength(1);
     expect(reports[0].category).toBe('scam');
   });
@@ -36,14 +38,14 @@ describe('reputation repository', () => {
     const stored = await repository.upsert(subject, reporter, 'scam');
     expect(await repository.list(subject.number, now)).toHaveLength(1);
 
-    expect(await repository.withdraw(stored.id, reporter.id)).toBe(true);
+    expect(await repository.withdraw(stored.report.id, reporter.id)).toBe(true);
     expect(await repository.list(subject.number, now)).toHaveLength(0);
   });
 
   it('prevents a different reporter from withdrawing a report', async () => {
     const repository = new InMemoryReputationRepository();
     const stored = await repository.upsert(subject, reporter, 'spam');
-    expect(await repository.withdraw(stored.id, 'reporter-2')).toBe(false);
+    expect(await repository.withdraw(stored.report.id, 'reporter-2')).toBe(false);
   });
 
   it('scores submitted scam reports as risk evidence', async () => {
