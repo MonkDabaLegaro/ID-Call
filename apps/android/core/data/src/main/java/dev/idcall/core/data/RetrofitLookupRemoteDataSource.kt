@@ -1,6 +1,7 @@
 package dev.idcall.core.data
 
 import dev.idcall.core.model.LookupEvidence
+import dev.idcall.core.model.LookupIdentity
 import dev.idcall.core.model.LookupRecord
 import dev.idcall.core.network.LookupApi
 import dev.idcall.core.network.ReportRequestDto
@@ -19,6 +20,17 @@ class RetrofitLookupRemoteDataSource(
             nationalNumber = dto.nationalNumber,
             regionCode = dto.regionCode,
             numberType = dto.numberType,
+            identity = dto.identity?.let {
+                LookupIdentity(
+                    displayName = it.displayName,
+                    identityType = it.identityType,
+                    verification = it.verification,
+                    confidence = it.confidence,
+                    publicWebsite = it.publicWebsite,
+                    publicAddress = it.publicAddress,
+                    expiresAtEpochMs = it.expiresAt?.let(Instant::parse)?.toEpochMilli(),
+                )
+            },
             locationLabel = dto.location.label,
             locationPrecision = dto.location.precision,
             locationDisclaimer = dto.location.disclaimer,
