@@ -18,7 +18,7 @@ class DefaultLookupRepositoryTest {
         val cache = FakeCache(cached)
         val remote = FakeRemote(record(cachedAt = now))
         val history = FakeHistory()
-        val repository = DefaultLookupRepository(cache, remote, { now }, history)
+        val repository = DefaultLookupRepository(cache, remote, nowEpochMs = { now }, history = history)
 
         val result = repository.lookup(cached.number)
 
@@ -34,7 +34,7 @@ class DefaultLookupRepositoryTest {
         val fresh = record(cachedAt = now, location = "CL")
         val cache = FakeCache(stale)
         val remote = FakeRemote(fresh)
-        val repository = DefaultLookupRepository(cache, remote) { now }
+        val repository = DefaultLookupRepository(cache, remote, nowEpochMs = { now })
 
         val result = repository.lookup(stale.number)
 
@@ -49,7 +49,7 @@ class DefaultLookupRepositoryTest {
         val stale = record(cachedAt = now - 25 * 60 * 60 * 1000L)
         val cache = FakeCache(stale)
         val remote = FakeRemote(error = IllegalStateException("offline"))
-        val repository = DefaultLookupRepository(cache, remote) { now }
+        val repository = DefaultLookupRepository(cache, remote, nowEpochMs = { now })
 
         val result = repository.lookup(stale.number)
 
@@ -62,7 +62,7 @@ class DefaultLookupRepositoryTest {
         val updated = record(cachedAt = now).copy(reputationLevel = "medium", reputationReports = 1)
         val cache = FakeCache(null)
         val remote = FakeRemote(updated)
-        val repository = DefaultLookupRepository(cache, remote) { now }
+        val repository = DefaultLookupRepository(cache, remote, nowEpochMs = { now })
 
         val result = repository.report(updated.number, "scam")
 
