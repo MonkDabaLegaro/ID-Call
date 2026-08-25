@@ -16,3 +16,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "IDCall"
 include(":app")
+include(":core:model")
+include(":core:database")
+include(":core:network")
+include(":core:data")
+include(":feature:lookup")
+include(":platform:screening")
