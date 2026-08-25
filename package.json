@@ -4,11 +4,11 @@
   "private": true,
   "packageManager": "npm@11.8.0",
   "workspaces": [
-    "apps/api",
     "packages/contracts",
     "packages/phone-domain",
     "packages/reputation-domain",
-    "services/enrichment-worker"
+    "services/enrichment-worker",
+    "apps/api"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

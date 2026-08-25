@@ -2,6 +2,7 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export type PhoneMetadata = {
   e164: string;
+  valid: true;
   countryCode: string;
   nationalNumber: string;
   regionCode: string | null;
@@ -14,6 +15,7 @@ export function normalizePhoneNumber(input: string): PhoneMetadata {
 
   return {
     e164: parsed.number,
+    valid: true,
     countryCode: parsed.countryCallingCode,
     nationalNumber: parsed.nationalNumber,
     regionCode: parsed.country ?? null,
