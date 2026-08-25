@@ -31,3 +31,14 @@ data class LookupResponseDto(
     val sources: List<EvidenceDto>,
     val cachedAt: String,
 )
+
+data class ReportRequestDto(
+    val phoneNumber: String,
+    val category: String,
+)
+
+data class ReportResponseDto(
+    val number: String,
+    val category: String,
+    val reputation: ReputationDto,
+)

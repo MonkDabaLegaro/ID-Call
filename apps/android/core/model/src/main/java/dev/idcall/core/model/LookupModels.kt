@@ -33,6 +33,14 @@ data class LookupRecord(
         get() = locationLabel ?: regionCode ?: number
 }
 
+data class LookupHistoryItem(
+    val number: String,
+    val displayLabel: String,
+    val reputationLevel: String,
+    val lastLookedUpEpochMs: Long,
+    val lookupCount: Int,
+)
+
 enum class LookupOrigin {
     FRESH_CACHE,
     NETWORK,

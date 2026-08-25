@@ -3,6 +3,7 @@ package dev.idcall.core.data
 import dev.idcall.core.model.LookupEvidence
 import dev.idcall.core.model.LookupRecord
 import dev.idcall.core.network.LookupApi
+import dev.idcall.core.network.ReportRequestDto
 import java.time.Instant
 
 class RetrofitLookupRemoteDataSource(
@@ -32,5 +33,9 @@ class RetrofitLookupRemoteDataSource(
             },
             cachedAtEpochMs = Instant.parse(dto.cachedAt).toEpochMilli(),
         )
+    }
+
+    override suspend fun report(number: String, category: String) {
+        api.report(ReportRequestDto(phoneNumber = number, category = category))
     }
 }

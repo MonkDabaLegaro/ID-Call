@@ -11,8 +11,10 @@ object LookupRepositoryFactory {
         context: Context,
         baseUrl: String = DEFAULT_EMULATOR_API_BASE_URL,
     ): LookupRepository {
-        val cache = RoomLookupCacheDataSource(LookupDatabase.get(context).lookupDao())
+        val database = LookupDatabase.get(context)
+        val cache = RoomLookupCacheDataSource(database.lookupDao())
+        val history = RoomLookupHistoryDataSource(database.historyDao())
         val remote = RetrofitLookupRemoteDataSource(LookupApiFactory.create(baseUrl))
-        return DefaultLookupRepository(cache, remote)
+        return DefaultLookupRepository(cache, remote, history = history)
     }
 }
