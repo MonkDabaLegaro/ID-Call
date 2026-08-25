@@ -5,9 +5,11 @@ import dev.idcall.core.model.LookupRecord
 import dev.idcall.core.network.LookupApi
 import dev.idcall.core.network.ReportRequestDto
 import java.time.Instant
+import retrofit2.HttpException
 
 class RetrofitLookupRemoteDataSource(
     private val api: LookupApi,
+    private val reporterSessionManager: ReporterSessionManager,
 ) : LookupRemoteDataSource {
     override suspend fun lookup(number: String): LookupRecord {
         val dto = api.lookup(number)
@@ -36,6 +38,15 @@ class RetrofitLookupRemoteDataSource(
     }
 
     override suspend fun report(number: String, category: String) {
-        api.report(ReportRequestDto(phoneNumber = number, category = category))
+        val request = ReportRequestDto(phoneNumber = number, category = category)
+        val firstSession = reporterSessionManager.session()
+        try {
+            api.report("Bearer ${firstSession.token}", request)
+        } catch (error: HttpException) {
+            if (error.code() != 401) throw error
+            reporterSessionManager.invalidate()
+            val replacement = reporterSessionManager.session()
+            api.report("Bearer ${replacement.token}", request)
+        }
     }
 }
