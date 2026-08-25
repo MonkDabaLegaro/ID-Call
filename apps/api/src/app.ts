@@ -50,6 +50,13 @@ type AppDependencies = {
   moderationToken?: string;
 };
 
+type BusinessClaimBody = {
+  phoneNumber?: string;
+  displayName?: string;
+  publicWebsite?: string | null;
+  publicAddress?: string | null;
+};
+
 function targetKey(number: string): string {
   return createHash('sha256').update(number).digest('hex');
 }
@@ -59,7 +66,7 @@ function moderatorAuthorized(header: string | undefined, token: string | undefin
   return header.slice('Bearer '.length) === token;
 }
 
-function validBusinessClaim(body: any): boolean {
+function validBusinessClaim(body: BusinessClaimBody | undefined): body is Required<Pick<BusinessClaimBody, 'phoneNumber' | 'displayName'>> & BusinessClaimBody {
   if (!body?.phoneNumber || typeof body.displayName !== 'string') return false;
   const displayName = body.displayName.trim();
   if (displayName.length < 2 || displayName.length > 120) return false;
@@ -226,7 +233,7 @@ export function buildApp(dependencies: AppDependencies = {}) {
     return reply.code(201).send({ correctionId: correction.id, status: correction.status });
   });
 
-  app.post<{ Body: any }>('/v1/business-claims', async (request, reply) => {
+  app.post<{ Body: BusinessClaimBody }>('/v1/business-claims', async (request, reply) => {
     if (!validBusinessClaim(request.body)) {
       return reply.code(400).send({ error: 'INVALID_BUSINESS_CLAIM' });
     }
