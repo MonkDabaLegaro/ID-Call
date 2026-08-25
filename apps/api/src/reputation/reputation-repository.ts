@@ -37,8 +37,13 @@ export type StoredReputationReport = {
   withdrawnAt: Date | null;
 };
 
+export type UpsertReputationResult = {
+  report: StoredReputationReport;
+  created: boolean;
+};
+
 export interface ReputationRepository {
-  upsert(subject: ReputationSubject, reporter: ReporterVote, category: ReportCategory): Promise<StoredReputationReport>;
+  upsert(subject: ReputationSubject, reporter: ReporterVote, category: ReportCategory): Promise<UpsertReputationResult>;
   withdraw(reportId: string, reporterId: string): Promise<boolean>;
   list(number: string, now?: Date): Promise<StoredReputationReport[]>;
   prune(now: Date): Promise<number>;
@@ -55,7 +60,7 @@ export class InMemoryReputationRepository implements ReputationRepository {
     subject: ReputationSubject,
     reporter: ReporterVote,
     category: ReportCategory,
-  ): Promise<StoredReputationReport> {
+  ): Promise<UpsertReputationResult> {
     const now = this.nowProvider();
     const existing = this.reports.get(subject.number) ?? [];
     const current = existing.find((report) => report.reporterId === reporter.id);
@@ -65,10 +70,10 @@ export class InMemoryReputationRepository implements ReputationRepository {
       current.updatedAt = now;
       current.expiresAt = new Date(now.getTime() + REPORT_TTL_MS);
       current.withdrawnAt = null;
-      return { ...current };
+      return { report: { ...current }, created: false };
     }
 
-    const created: StoredReputationReport = {
+    const createdReport: StoredReputationReport = {
       id: randomUUID(),
       reporterId: reporter.id,
       category,
@@ -78,9 +83,9 @@ export class InMemoryReputationRepository implements ReputationRepository {
       expiresAt: new Date(now.getTime() + REPORT_TTL_MS),
       withdrawnAt: null,
     };
-    existing.push(created);
+    existing.push(createdReport);
     this.reports.set(subject.number, existing);
-    return { ...created };
+    return { report: { ...createdReport }, created: true };
   }
 
   async withdraw(reportId: string, reporterId: string): Promise<boolean> {
