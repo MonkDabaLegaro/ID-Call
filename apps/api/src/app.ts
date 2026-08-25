@@ -96,34 +96,36 @@ export function buildApp(dependencies: AppDependencies = {}) {
     const reporter = await authenticateBearer(request.headers.authorization, reporterRepository);
     if (!reporter) return reply.code(401).send({ error: 'REPORTER_AUTH_REQUIRED' });
 
+    let phone;
     try {
-      const phone = phoneMetadataProvider.lookup(request.body.phoneNumber);
-      const decision = await reportRateLimiter.checkReport(reporter.id, targetKey(phone.e164));
-      if (!decision.allowed) {
-        if (decision.retryAfterSeconds) reply.header('Retry-After', String(decision.retryAfterSeconds));
-        return reply.code(429).send({ error: 'REPORT_RATE_LIMITED' });
-      }
-
-      const stored = await reputationRepository.upsert({
-        number: phone.e164,
-        countryCode: phone.countryCode,
-        regionCode: phone.regionCode,
-        numberType: phone.numberType,
-      }, {
-        id: reporter.id,
-        trust: calculateReporterTrust(reporter),
-      }, request.body.category);
-      await reporterRepository.incrementAcceptedReports(reporter.id);
-      const reputation = scoreStoredReports(await reputationRepository.list(phone.e164));
-      return reply.code(201).send({
-        reportId: stored.id,
-        number: phone.e164,
-        category: stored.category,
-        reputation,
-      });
+      phone = phoneMetadataProvider.lookup(request.body.phoneNumber);
     } catch {
       return reply.code(400).send({ error: 'INVALID_PHONE_NUMBER' });
     }
+
+    const decision = await reportRateLimiter.checkReport(reporter.id, targetKey(phone.e164));
+    if (!decision.allowed) {
+      if (decision.retryAfterSeconds) reply.header('Retry-After', String(decision.retryAfterSeconds));
+      return reply.code(429).send({ error: 'REPORT_RATE_LIMITED' });
+    }
+
+    const upsert = await reputationRepository.upsert({
+      number: phone.e164,
+      countryCode: phone.countryCode,
+      regionCode: phone.regionCode,
+      numberType: phone.numberType,
+    }, {
+      id: reporter.id,
+      trust: calculateReporterTrust(reporter),
+    }, request.body.category);
+    if (upsert.created) await reporterRepository.incrementAcceptedReports(reporter.id);
+    const reputation = scoreStoredReports(await reputationRepository.list(phone.e164));
+    return reply.code(201).send({
+      reportId: upsert.report.id,
+      number: phone.e164,
+      category: upsert.report.category,
+      reputation,
+    });
   });
 
   app.delete<{ Params: { reportId: string } }>('/v1/reports/:reportId', async (request, reply) => {
@@ -156,21 +158,22 @@ export function buildApp(dependencies: AppDependencies = {}) {
       return reply.code(429).send({ error: 'REPORT_RATE_LIMITED' });
     }
 
+    let phone;
     try {
-      const phone = phoneMetadataProvider.lookup(request.body.phoneNumber);
-      const correction = await correctionRepository.create({
-        number: phone.e164,
-        countryCode: phone.countryCode,
-        regionCode: phone.regionCode,
-        numberType: phone.numberType,
-      }, reporter.id, request.body.kind, typeof reason === 'string' ? reason : null);
-      return reply.code(201).send({
-        correctionId: correction.id,
-        status: correction.status,
-      });
+      phone = phoneMetadataProvider.lookup(request.body.phoneNumber);
     } catch {
       return reply.code(400).send({ error: 'INVALID_PHONE_NUMBER' });
     }
+    const correction = await correctionRepository.create({
+      number: phone.e164,
+      countryCode: phone.countryCode,
+      regionCode: phone.regionCode,
+      numberType: phone.numberType,
+    }, reporter.id, request.body.kind, typeof reason === 'string' ? reason : null);
+    return reply.code(201).send({
+      correctionId: correction.id,
+      status: correction.status,
+    });
   });
 
   return app;
