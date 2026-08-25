@@ -6,23 +6,31 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import dev.idcall.core.data.LookupRepositoryFactory
+import dev.idcall.feature.lookup.LookupScreen
+import dev.idcall.feature.lookup.LookupViewModel
+import dev.idcall.feature.lookup.LookupViewModelFactory
 
 class MainActivity : ComponentActivity() {
     private val roleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val repository = LookupRepositoryFactory.create(this)
+        val lookupViewModel = ViewModelProvider(
+            this,
+            LookupViewModelFactory(repository),
+        )[LookupViewModel::class.java]
+
         setContent {
             MaterialTheme {
-                HomeScreen(onEnableCallerId = ::requestCallScreeningRole)
+                LookupScreen(
+                    viewModel = lookupViewModel,
+                    onEnableCallerId = ::requestCallScreeningRole,
+                )
             }
         }
     }
@@ -34,17 +42,6 @@ class MainActivity : ComponentActivity() {
         ) {
             val intent: Intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
             roleLauncher.launch(intent)
-        }
-    }
-}
-
-@Composable
-private fun HomeScreen(onEnableCallerId: () -> Unit) {
-    Column(modifier = Modifier.padding(24.dp)) {
-        Text("ID-Call", style = MaterialTheme.typography.headlineLarge)
-        Text("Caller intelligence with source-aware number metadata and reputation.")
-        Button(onClick = onEnableCallerId, modifier = Modifier.padding(top = 16.dp)) {
-            Text("Enable caller identification")
         }
     }
 }
