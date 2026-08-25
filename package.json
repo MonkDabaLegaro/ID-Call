@@ -1,0 +1,22 @@
+{
+  "name": "id-call",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.8.0",
+  "workspaces": [
+    "packages/contracts",
+    "packages/phone-domain",
+    "packages/reputation-domain",
+    "services/enrichment-worker",
+    "apps/api"
+  ],
+  "scripts": {
+    "build": "npm run build -w @id-call/contracts && npm run build -w @id-call/phone-domain && npm run build -w @id-call/reputation-domain && npm run build -w @id-call/enrichment-worker && npm run build -w @id-call/api",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:api": "npm run dev -w @id-call/api"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
