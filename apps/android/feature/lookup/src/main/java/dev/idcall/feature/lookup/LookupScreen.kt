@@ -115,8 +115,23 @@ private fun LookupResultCard(state: LookupUiState.Success, onReport: (String) ->
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(record.number, style = MaterialTheme.typography.titleLarge)
+            Text(record.displayLabel, style = MaterialTheme.typography.titleLarge)
+            Text(record.number, style = MaterialTheme.typography.bodyMedium)
             Text("Source: $originLabel")
+
+            record.identity?.let { identity ->
+                Spacer(Modifier.height(4.dp))
+                Text("Business identity", style = MaterialTheme.typography.titleMedium)
+                Text("Verification: ${identity.verification}")
+                Text("Confidence: ${(identity.confidence * 100).toInt()}%")
+                identity.publicWebsite?.let { Text("Website: $it") }
+                identity.publicAddress?.let { Text("Public address: $it") }
+                Text(
+                    "Identity verification is separate from call reputation and can expire or become outdated.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
             Text("Region: ${record.locationLabel ?: record.regionCode ?: "Unknown"}")
             Text("Number type: ${record.numberType ?: "Unknown"}")
             Text("Reputation: ${record.reputationLevel} (${record.reputationReports} reports)")
