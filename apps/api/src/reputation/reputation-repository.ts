@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ReputationEvidence, ReputationResult } from '@id-call/reputation-domain';
 import { scoreReputation } from '@id-call/reputation-domain';
 
@@ -20,28 +21,106 @@ export type ReputationSubject = {
   numberType: string | null;
 };
 
+export type ReporterVote = {
+  id: string;
+  trust: number;
+};
+
 export type StoredReputationReport = {
+  id: string;
+  reporterId: string;
   category: ReportCategory;
   reporterTrust: number;
   createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+  withdrawnAt: Date | null;
+};
+
+export type UpsertReputationResult = {
+  report: StoredReputationReport;
+  created: boolean;
 };
 
 export interface ReputationRepository {
-  add(subject: ReputationSubject, category: ReportCategory): Promise<void>;
-  list(number: string): Promise<StoredReputationReport[]>;
+  upsert(subject: ReputationSubject, reporter: ReporterVote, category: ReportCategory): Promise<UpsertReputationResult>;
+  withdraw(reportId: string, reporterId: string): Promise<boolean>;
+  list(number: string, now?: Date): Promise<StoredReputationReport[]>;
+  prune(now: Date): Promise<number>;
 }
+
+const REPORT_TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 export class InMemoryReputationRepository implements ReputationRepository {
   private readonly reports = new Map<string, StoredReputationReport[]>();
 
-  async add(subject: ReputationSubject, category: ReportCategory): Promise<void> {
+  constructor(private readonly nowProvider: () => Date = () => new Date()) {}
+
+  async upsert(
+    subject: ReputationSubject,
+    reporter: ReporterVote,
+    category: ReportCategory,
+  ): Promise<UpsertReputationResult> {
+    const now = this.nowProvider();
     const existing = this.reports.get(subject.number) ?? [];
-    existing.push({ category, reporterTrust: 0.5, createdAt: new Date() });
+    const current = existing.find((report) => report.reporterId === reporter.id);
+    if (current) {
+      current.category = category;
+      current.reporterTrust = reporter.trust;
+      current.updatedAt = now;
+      current.expiresAt = new Date(now.getTime() + REPORT_TTL_MS);
+      current.withdrawnAt = null;
+      return { report: { ...current }, created: false };
+    }
+
+    const createdReport: StoredReputationReport = {
+      id: randomUUID(),
+      reporterId: reporter.id,
+      category,
+      reporterTrust: reporter.trust,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: new Date(now.getTime() + REPORT_TTL_MS),
+      withdrawnAt: null,
+    };
+    existing.push(createdReport);
     this.reports.set(subject.number, existing);
+    return { report: { ...createdReport }, created: true };
   }
 
-  async list(number: string): Promise<StoredReputationReport[]> {
-    return [...(this.reports.get(number) ?? [])];
+  async withdraw(reportId: string, reporterId: string): Promise<boolean> {
+    for (const reports of this.reports.values()) {
+      const report = reports.find((candidate) => candidate.id === reportId && candidate.reporterId === reporterId);
+      if (report) {
+        const now = this.nowProvider();
+        report.withdrawnAt = now;
+        report.updatedAt = now;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async list(number: string, now: Date = this.nowProvider()): Promise<StoredReputationReport[]> {
+    return (this.reports.get(number) ?? [])
+      .filter((report) => !report.withdrawnAt && report.expiresAt.getTime() > now.getTime())
+      .map((report) => ({ ...report }));
+  }
+
+  async prune(now: Date): Promise<number> {
+    const withdrawnCutoff = now.getTime() - REPORT_TTL_MS;
+    let deleted = 0;
+    for (const [number, reports] of this.reports.entries()) {
+      const kept = reports.filter((report) => {
+        const removable = report.expiresAt.getTime() <= now.getTime()
+          || (report.withdrawnAt !== null && report.updatedAt.getTime() <= withdrawnCutoff);
+        if (removable) deleted += 1;
+        return !removable;
+      });
+      if (kept.length === 0) this.reports.delete(number);
+      else this.reports.set(number, kept);
+    }
+    return deleted;
   }
 }
 

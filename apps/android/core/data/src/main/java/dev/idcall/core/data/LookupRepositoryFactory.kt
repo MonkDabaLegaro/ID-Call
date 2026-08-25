@@ -14,7 +14,12 @@ object LookupRepositoryFactory {
         val database = LookupDatabase.get(context)
         val cache = RoomLookupCacheDataSource(database.lookupDao())
         val history = RoomLookupHistoryDataSource(database.historyDao())
-        val remote = RetrofitLookupRemoteDataSource(LookupApiFactory.create(baseUrl))
+        val api = LookupApiFactory.create(baseUrl)
+        val reporterSessionManager = ReporterSessionManager(
+            store = SharedPreferencesReporterSessionStore(context.applicationContext),
+            registrar = RetrofitReporterRegistrar(api),
+        )
+        val remote = RetrofitLookupRemoteDataSource(api, reporterSessionManager)
         return DefaultLookupRepository(cache, remote, history = history)
     }
 }

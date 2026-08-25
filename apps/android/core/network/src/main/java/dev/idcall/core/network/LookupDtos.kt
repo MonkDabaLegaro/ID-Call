@@ -32,13 +32,30 @@ data class LookupResponseDto(
     val cachedAt: String,
 )
 
+data class ReporterRegistrationResponseDto(
+    val reporterId: String,
+    val token: String,
+)
+
 data class ReportRequestDto(
     val phoneNumber: String,
     val category: String,
 )
 
 data class ReportResponseDto(
+    val reportId: String,
     val number: String,
     val category: String,
     val reputation: ReputationDto,
+)
+
+data class CorrectionRequestDto(
+    val phoneNumber: String,
+    val kind: String,
+    val reason: String? = null,
+)
+
+data class CorrectionResponseDto(
+    val correctionId: String,
+    val status: String,
 )
