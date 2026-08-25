@@ -2,9 +2,11 @@ import { createHmac } from 'node:crypto';
 import { Pool } from 'pg';
 import type { ReputationSubject } from '../reputation/reputation-repository.js';
 import type {
+  CorrectionDecision,
   CorrectionKind,
   CorrectionRepository,
   CorrectionRequest,
+  CorrectionStatus,
 } from './correction-repository.js';
 
 export class PostgresCorrectionRepository implements CorrectionRepository {
@@ -34,6 +36,19 @@ export class PostgresCorrectionRepository implements CorrectionRepository {
     return result.rows[0].id;
   }
 
+  private map(row: any): CorrectionRequest {
+    return {
+      id: row.id,
+      reporterId: row.reporter_id,
+      phoneNumber: row.phone_number ?? `[hmac:${row.phone_hmac}]`,
+      kind: row.kind,
+      reason: row.reason,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   async create(
     subject: ReputationSubject,
     reporterId: string,
@@ -41,52 +56,51 @@ export class PostgresCorrectionRepository implements CorrectionRepository {
     reason: string | null,
   ): Promise<CorrectionRequest> {
     const phoneId = await this.ensurePhone(subject);
-    const result = await this.pool.query<{
-      id: string;
-      status: 'pending';
-      created_at: Date;
-    }>(
+    const result = await this.pool.query(
       `INSERT INTO correction_requests (phone_number_id, reporter_id, kind, reason)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, status, created_at`,
-      [phoneId, reporterId, kind, reason],
+       RETURNING id, reporter_id, $5::text AS phone_number, kind, reason, status, created_at, updated_at`,
+      [phoneId, reporterId, kind, reason, subject.number],
     );
-    const row = result.rows[0];
-    return {
-      id: row.id,
-      reporterId,
-      phoneNumber: subject.number,
-      kind,
-      reason,
-      status: row.status,
-      createdAt: row.created_at,
-    };
+    return this.map(result.rows[0]);
   }
 
   async listForReporter(reporterId: string): Promise<CorrectionRequest[]> {
-    const result = await this.pool.query<{
-      id: string;
-      kind: CorrectionKind;
-      reason: string | null;
-      status: 'pending' | 'accepted' | 'rejected';
-      created_at: Date;
-      phone_hmac: string;
-    }>(
-      `SELECT cr.id, cr.kind, cr.reason, cr.status, cr.created_at, pn.phone_hmac
+    const result = await this.pool.query(
+      `SELECT cr.id, cr.reporter_id, cr.kind, cr.reason, cr.status, cr.created_at, cr.updated_at, pn.phone_hmac
        FROM correction_requests cr
        JOIN phone_numbers pn ON pn.id = cr.phone_number_id
        WHERE cr.reporter_id = $1
        ORDER BY cr.created_at DESC`,
       [reporterId],
     );
-    return result.rows.map((row) => ({
-      id: row.id,
-      reporterId,
-      phoneNumber: `[hmac:${row.phone_hmac}]`,
-      kind: row.kind,
-      reason: row.reason,
-      status: row.status,
-      createdAt: row.created_at,
-    }));
+    return result.rows.map((row) => this.map(row));
+  }
+
+  async listByStatus(status: CorrectionStatus): Promise<CorrectionRequest[]> {
+    const result = await this.pool.query(
+      `SELECT cr.id, cr.reporter_id, cr.kind, cr.reason, cr.status, cr.created_at, cr.updated_at, pn.phone_hmac
+       FROM correction_requests cr
+       JOIN phone_numbers pn ON pn.id = cr.phone_number_id
+       WHERE cr.status = $1
+       ORDER BY cr.created_at ASC`,
+      [status],
+    );
+    return result.rows.map((row) => this.map(row));
+  }
+
+  async decide(
+    correctionId: string,
+    decision: CorrectionDecision,
+    decidedAt: Date = new Date(),
+  ): Promise<CorrectionRequest | null> {
+    const result = await this.pool.query(
+      `UPDATE correction_requests
+       SET status = $2, updated_at = $3
+       WHERE id = $1 AND status = 'pending'
+       RETURNING id, reporter_id, ''::text AS phone_number, kind, reason, status, created_at, updated_at`,
+      [correctionId, decision, decidedAt],
+    );
+    return result.rowCount ? this.map(result.rows[0]) : null;
   }
 }
