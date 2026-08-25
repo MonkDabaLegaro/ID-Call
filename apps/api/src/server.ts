@@ -4,7 +4,7 @@ import { PostgresReputationRepository } from './reputation/postgres-reputation-r
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
 const databaseUrl = process.env.DATABASE_URL;
-const hmacSecret = process.env.PHONE_HMAC_SECRET;
+const hmacSecret = process.env.PHONE_LOOKUP_HMAC_SECRET;
 
 const reputationRepository = databaseUrl && hmacSecret
   ? new PostgresReputationRepository(databaseUrl, hmacSecret)
