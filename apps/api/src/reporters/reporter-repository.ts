@@ -18,6 +18,10 @@ export interface ReporterRepository {
   incrementAcceptedReports(reporterId: string): Promise<void>;
 }
 
+export function createReporterToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
 export function hashReporterToken(rawToken: string): string {
   return createHash('sha256').update(rawToken).digest('hex');
 }
@@ -41,7 +45,7 @@ export class InMemoryReporterRepository implements ReporterRepository {
 
   async create(): Promise<ReporterCredential> {
     const id = randomUUID();
-    const token = randomBytes(32).toString('base64url');
+    const token = createReporterToken();
     this.reporters.set(id, {
       id,
       tokenHash: hashReporterToken(token),
