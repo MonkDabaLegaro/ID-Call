@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LookupEntity::class, LookupEvidenceEntity::class, LookupHistoryEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class LookupDatabase : RoomDatabase() {
@@ -34,12 +34,28 @@ abstract class LookupDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "identityDisplayName TEXT",
+                    "identityType TEXT",
+                    "identityVerification TEXT",
+                    "identityConfidence REAL",
+                    "identityPublicWebsite TEXT",
+                    "identityPublicAddress TEXT",
+                    "identityExpiresAtEpochMs INTEGER",
+                ).forEach { column ->
+                    db.execSQL("ALTER TABLE lookup_records ADD COLUMN $column")
+                }
+            }
+        }
+
         fun get(context: Context): LookupDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 LookupDatabase::class.java,
                 "id-call.db",
-            ).addMigrations(MIGRATION_1_2)
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 .also { instance = it }
         }
