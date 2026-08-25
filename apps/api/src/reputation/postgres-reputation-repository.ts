@@ -6,6 +6,7 @@ import type {
   ReputationSubject,
   ReporterVote,
   StoredReputationReport,
+  UpsertReputationResult,
 } from './reputation-repository.js';
 
 export class PostgresReputationRepository implements ReputationRepository {
@@ -35,8 +36,13 @@ export class PostgresReputationRepository implements ReputationRepository {
     return result.rows[0].id;
   }
 
-  async upsert(subject: ReputationSubject, reporter: ReporterVote, category: ReportCategory): Promise<StoredReputationReport> {
+  async upsert(subject: ReputationSubject, reporter: ReporterVote, category: ReportCategory): Promise<UpsertReputationResult> {
     const phoneId = await this.ensurePhone(subject);
+    const previous = await this.pool.query<{ id: string }>(
+      'SELECT id FROM reputation_reports WHERE phone_number_id = $1 AND reporter_id = $2',
+      [phoneId, reporter.id],
+    );
+    const created = previous.rowCount === 0;
     const result = await this.pool.query<{
       id: string;
       reporter_id: string;
@@ -61,7 +67,7 @@ export class PostgresReputationRepository implements ReputationRepository {
       [phoneId, reporter.id, category, reporter.trust],
     );
     const row = result.rows[0];
-    return {
+    const report: StoredReputationReport = {
       id: row.id,
       reporterId: row.reporter_id,
       category: row.category,
@@ -71,6 +77,7 @@ export class PostgresReputationRepository implements ReputationRepository {
       expiresAt: row.expires_at,
       withdrawnAt: row.withdrawn_at,
     };
+    return { report, created };
   }
 
   async withdraw(reportId: string, reporterId: string): Promise<boolean> {
