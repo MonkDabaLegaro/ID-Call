@@ -11,7 +11,7 @@
     "apps/api"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @id-call/contracts && npm run build -w @id-call/phone-domain && npm run build -w @id-call/reputation-domain && npm run build -w @id-call/enrichment-worker && npm run build -w @id-call/api",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev:api": "npm run dev -w @id-call/api"
