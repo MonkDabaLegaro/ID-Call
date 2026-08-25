@@ -1,20 +1,32 @@
 package dev.idcall.app
 
+import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.ViewModelProvider
+import dev.idcall.core.data.CachePrewarmScheduler
 import dev.idcall.core.data.LookupRepositoryFactory
 import dev.idcall.feature.lookup.LookupScreen
 import dev.idcall.feature.lookup.LookupViewModel
 import dev.idcall.feature.lookup.LookupViewModelFactory
 
 class MainActivity : ComponentActivity() {
-    private val roleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    private val roleLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        requestNotificationPermission()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,6 +36,8 @@ class MainActivity : ComponentActivity() {
             this,
             LookupViewModelFactory(repository),
         )[LookupViewModel::class.java]
+
+        CachePrewarmScheduler.enqueue(this)
 
         setContent {
             MaterialTheme {
@@ -42,6 +56,16 @@ class MainActivity : ComponentActivity() {
         ) {
             val intent: Intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
             roleLauncher.launch(intent)
+        } else {
+            requestNotificationPermission()
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

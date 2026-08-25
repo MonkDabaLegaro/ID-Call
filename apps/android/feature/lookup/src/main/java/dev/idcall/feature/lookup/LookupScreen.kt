@@ -14,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,7 +24,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.idcall.core.model.LookupHistoryItem
 import dev.idcall.core.model.LookupOrigin
+
+private val visibleReportCategories = listOf(
+    "spam" to "Spam",
+    "scam" to "Scam",
+    "telemarketing" to "Telemarketing",
+    "robocall" to "Robocall",
+    "legitimate_business" to "Legitimate business",
+)
 
 @Composable
 fun LookupScreen(
@@ -32,6 +42,8 @@ fun LookupScreen(
 ) {
     var number by remember { mutableStateOf("") }
     val state by viewModel.state.collectAsState()
+    val history by viewModel.history.collectAsState()
+    val reportMessage by viewModel.reportMessage.collectAsState()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -60,6 +72,11 @@ fun LookupScreen(
             Text("Look up number")
         }
 
+        RecentHistory(history) { selected ->
+            number = selected
+            viewModel.lookup(selected)
+        }
+
         when (val current = state) {
             LookupUiState.Idle -> Text("Search a number to inspect its numbering metadata and reputation.")
             LookupUiState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -67,13 +84,28 @@ fun LookupScreen(
                 Text("Looking up…", modifier = Modifier.padding(start = 12.dp))
             }
             is LookupUiState.Error -> Text(current.message, color = MaterialTheme.colorScheme.error)
-            is LookupUiState.Success -> LookupResultCard(current)
+            is LookupUiState.Success -> LookupResultCard(current, viewModel::report)
+        }
+
+        reportMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun RecentHistory(history: List<LookupHistoryItem>, onSelect: (String) -> Unit) {
+    if (history.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Recent lookups", style = MaterialTheme.typography.titleMedium)
+        history.forEach { item ->
+            TextButton(onClick = { onSelect(item.number) }) {
+                Text("${item.displayLabel} · ${item.number} · ${item.reputationLevel}")
+            }
         }
     }
 }
 
 @Composable
-private fun LookupResultCard(state: LookupUiState.Success) {
+private fun LookupResultCard(state: LookupUiState.Success, onReport: (String) -> Unit) {
     val record = state.result.record
     val originLabel = when (state.result.origin) {
         LookupOrigin.FRESH_CACHE -> "Fresh local cache"
@@ -95,6 +127,11 @@ private fun LookupResultCard(state: LookupUiState.Success) {
                 record.evidence.forEach { evidence ->
                     Text("${evidence.provider} · ${evidence.field} · ${(evidence.confidence * 100).toInt()}%")
                 }
+            }
+            Spacer(Modifier.height(4.dp))
+            Text("Community report", style = MaterialTheme.typography.titleMedium)
+            visibleReportCategories.forEach { (category, label) ->
+                TextButton(onClick = { onReport(category) }) { Text(label) }
             }
         }
     }
