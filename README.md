@@ -1,8 +1,8 @@
 # ID-Call
 
-ID-Call is an Android-first caller-intelligence platform focused on fast caller metadata, transparent provenance, local-first lookup, and reputation signals.
+ID-Call is an Android-first caller-intelligence platform focused on fast caller metadata, transparent provenance, local-first identification, lookup history, and community reputation.
 
-> ID-Call does **not** claim to derive a caller's live GPS position or private home address from a telephone number. Geographic information is limited to numbering metadata or explicitly public business information, and should always be shown with its precision/source.
+> ID-Call does **not** derive a caller's live GPS position or private home address from a telephone number. Geographic information is limited to numbering metadata or explicitly public business information and must retain its precision/source.
 
 ## Current architecture
 
@@ -10,59 +10,49 @@ ID-Call is an Android-first caller-intelligence platform focused on fast caller 
 apps/
   android/
     app/                      Android composition root
-    core/model/               Lookup domain models
-    core/database/            Room cache + evidence tables
-    core/network/             Retrofit API client
-    core/data/                Local-first repository + WorkManager refresh
-    feature/lookup/           Compose manual lookup UI
-    platform/screening/       CallScreeningService integration
-  api/                        Fastify HTTP API + provider boundary
+    core/model/               Lookup + history models
+    core/database/            Room cache, evidence and history
+    core/network/             Retrofit lookup/report client
+    core/data/                Local-first repository + refresh/prewarm workers
+    feature/lookup/           Compose lookup, history and reporting UI
+    platform/screening/       CallScreeningService + local notification
+  api/                        Fastify API + provider/reputation boundaries
 packages/
   contracts/                  Transport contracts
   phone-domain/               E.164 normalization and numbering metadata
   reputation-domain/          Reputation scoring primitives
 services/
-  enrichment-worker/          Provider abstraction for asynchronous enrichment
+  enrichment-worker/          Asynchronous enrichment extension point
 infrastructure/
   database/                   PostgreSQL schema
   docker-compose.yml          PostgreSQL + Redis local services
-docs/
-  architecture.md
-  privacy-model.md
-  superpowers/specs/
-  superpowers/plans/
 ```
 
-## Lookup flow
+## Runtime flows
 
-Manual lookup is local-first:
-
-```text
-UI -> LookupRepository -> Room
-                      |-> fresh hit: return immediately
-                      |-> stale/miss: API lookup -> persist -> return
-                      |-> network error + stale cache: return stale fallback
-```
+Manual lookup is cache-first. A successful manual lookup is recorded in Room history. On startup, WorkManager prewarms a bounded set of recent numbers so incoming-call identification has useful local data before a call arrives.
 
 Incoming-call screening is stricter:
 
 ```text
-CallScreeningService -> Room only -> respond within local timeout
-                                \-> schedule WorkManager refresh if stale/missing
+CallScreeningService -> Room only -> respond/fail-open
+                                |-> cached hit: local caller notification
+                                \-> stale/miss: schedule background refresh
 ```
 
-The screening callback never performs network I/O and always fails open on cache miss, timeout, or error.
+The screening callback has a 350 ms local lookup budget and never performs network I/O.
 
 ## API
 
 ```http
-GET /health
-GET /v1/lookup/:phoneNumber
+GET  /health
+GET  /v1/lookup/:phoneNumber
+POST /v1/reports
 ```
 
-Lookup fields include normalized E.164 number, country/region metadata, number type, reputation, evidence sources, confidence/provenance timestamps and an explicit location disclaimer.
+`POST /v1/reports` accepts a phone number plus one controlled category: `spam`, `scam`, `telemarketing`, `robocall`, `debt_collection`, `legitimate_business`, or `other`. Reports are reputation evidence; they are not identity claims.
 
-Phone metadata is resolved through an injectable `PhoneMetadataProvider`; the current implementation wraps `libphonenumber-js`, so future providers do not need to change the HTTP route.
+When `DATABASE_URL` and `PHONE_LOOKUP_HMAC_SECRET` are configured, the API stores reputation reports in PostgreSQL and correlates numbers using HMAC of normalized E.164 values. The HMAC secret must be at least 32 characters. Without those environment variables the API uses an in-memory reputation repository, which is intended for tests/development only.
 
 ## Local backend
 
@@ -76,10 +66,13 @@ npm test
 npm run dev:api
 ```
 
-Then query:
+Example lookup/report:
 
 ```bash
 curl "http://localhost:3000/v1/lookup/%2B56912345678"
+curl -X POST "http://localhost:3000/v1/reports" \
+  -H "Content-Type: application/json" \
+  -d '{"phoneNumber":"+56912345678","category":"spam"}'
 ```
 
 ## Android development
@@ -90,32 +83,22 @@ The Android app targets API 36 with minimum API 29 and uses JDK 17 / Gradle 8.13
 gradle -p apps/android test
 ```
 
-The emulator reaches the host development API at:
+The emulator reaches the host API at `http://10.0.2.2:3000/`. Only debug builds opt into cleartext traffic for this local endpoint.
 
-```text
-http://10.0.2.2:3000/
-```
+The app requests `ROLE_CALL_SCREENING`; on Android 13+ it also requests notification permission when caller identification is enabled. Room schema v2 adds lookup history with an explicit v1→v2 migration. Cache entries remain fresh for 24 hours; stale data may be shown in manual offline fallback but is not used as fresh incoming-call identification.
 
-Only the Android **debug** manifest opts into cleartext traffic for local development. Release builds keep the platform default and therefore do not inherit that local-development exception.
+## Data and abuse model
 
-The app requests `ROLE_CALL_SCREENING`. Lookup cache entries are considered fresh for 24 hours. Stale entries can still be shown as an offline fallback in the manual UI, but they are not considered authoritative fresh screening data.
+A telephone number is not a permanent person identifier. Public/self-claimed identity data remains an expiring claim backed by evidence. Reputation is stored separately. No live tracking, private-address discovery, contact scraping, or people-search enrichment is part of this implementation.
 
-## Data model
-
-A telephone number is not treated as a permanent person identifier. Public/self-claimed identity data is modeled as an expiring `identity_claim` backed by `identity_evidence`. Reputation reports are stored separately from identity claims.
-
-On Android, lookup metadata and evidence are persisted in separate Room tables rather than serializing provenance into an opaque blob.
-
-Persistent server deployments should lookup numbers through a server-side HMAC key instead of using raw phone numbers as primary database identifiers.
+Before a public launch, reporting still requires authentication/rate limits, reporter-trust evolution, duplicate/brigading resistance, correction/appeal flows, and retention controls.
 
 ## Documentation
 
-- `docs/architecture.md` — runtime and monorepo boundaries.
-- `docs/privacy-model.md` — data/abuse constraints.
-- `docs/superpowers/specs/2026-08-25-id-call-foundation-design.md` — foundation design.
-- `docs/superpowers/plans/2026-08-25-id-call-foundation.md` — foundation plan.
-- `docs/superpowers/specs/2026-08-25-android-lookup-integration-design.md` — local-first Android integration design.
-- `docs/superpowers/plans/2026-08-25-android-lookup-integration.md` — integration plan.
+- `docs/architecture.md`
+- `docs/privacy-model.md`
+- `docs/superpowers/specs/2026-08-25-reputation-history-screening-design.md`
+- `docs/superpowers/plans/2026-08-25-reputation-history-screening.md`
 
 ## License
 

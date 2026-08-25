@@ -32,6 +32,10 @@ class IdCallScreeningService : CallScreeningService() {
             } ?: ScreeningDecision(displayLabel = null, shouldRefresh = true)
 
             respondAllowed(callDetails)
+
+            if (decision.displayLabel != null) {
+                IncomingCallNotifier.show(applicationContext, number, decision)
+            }
             if (decision.shouldRefresh) {
                 LookupRefreshScheduler.enqueue(applicationContext, number)
             }

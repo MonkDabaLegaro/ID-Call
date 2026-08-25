@@ -6,38 +6,36 @@ ID-Call is an Android-first caller-intelligence monorepo.
 
 ### Incoming calls
 
-Incoming calls enter Android `CallScreeningService` in `platform/screening`. The service reads Room-backed lookup data only and uses a strict local timeout. It never waits on HTTP before answering Android. Cache miss, timeout, or database failure all produce a fail-open response. Stale or missing records can schedule a WorkManager refresh after the screening decision.
+Incoming calls enter `platform/screening`. `CallScreeningService` performs only a Room-backed lookup with a strict local timeout, responds fail-open, and then may display a local notification from the cached record. Network I/O is never part of the screening decision. Stale/missing records schedule WorkManager refresh after the response.
 
-### Manual lookup
+### Manual lookup and history
 
-`feature/lookup` talks to the `LookupRepository` contract in `core/data`. The default repository checks Room first. Fresh cache returns immediately; stale/missing cache triggers the Retrofit API source. Successful network results are persisted before being returned. If refresh fails and stale data exists, the stale value is returned with an explicit `STALE_CACHE` origin.
+`feature/lookup` consumes `LookupRepository` from `core/data`. Fresh Room cache returns immediately; stale/missing data triggers Retrofit and is persisted. Successful manual lookups are recorded independently in Room history. History is schema-versioned separately from cache semantics so cache expiry does not erase recent user activity.
 
-### Backend lookup
+### Cache prewarming
 
-The Fastify API orchestrates numbering metadata and reputation. Number parsing lives behind `PhoneMetadataProvider`; the default implementation wraps `libphonenumber-js`. Provider identity is included in response evidence so the client can expose provenance.
+`CachePrewarmWorker` reads recent history, selects a bounded unique set with `PrewarmSelector`, and refreshes those records only when network is available. This improves screening cache hit rate without putting HTTP work on the Telecom callback.
+
+### Reputation
+
+Fastify accepts controlled community report categories through `POST /v1/reports`. `ReputationRepository` separates orchestration from storage. Tests/development can use memory; configured runtime uses PostgreSQL. PostgreSQL correlates normalized E.164 numbers through server-side HMAC and stores reports independently of identity claims.
+
+### Backend metadata
+
+Number parsing remains behind `PhoneMetadataProvider`; the default wraps `libphonenumber-js`. Provider identity is included as source evidence. Numbering geography never represents current device location.
 
 ## Android module boundaries
 
-- `app`: composition root, system role request and top-level theme.
-- `core:model`: stable lookup data structures and freshness semantics.
-- `core:database`: Room entities, evidence relation, DAO and database lifecycle.
-- `core:network`: Retrofit DTO/service and client construction.
-- `core:data`: repository, Room/Retrofit adapters and WorkManager refresh.
-- `feature:lookup`: manual lookup UI and presentation state.
-- `platform:screening`: Telecom integration and local-only screening resolver.
+- `app`: composition root, caller-screening role, notification permission, prewarm scheduling.
+- `core:model`: lookup/history structures and freshness semantics.
+- `core:database`: Room cache/evidence/history entities, DAOs and migrations.
+- `core:network`: Retrofit lookup/report DTOs and service.
+- `core:data`: repository, Room/Retrofit adapters, refresh and prewarm workers.
+- `feature:lookup`: lookup, recent history and community reporting UI.
+- `platform:screening`: Telecom integration, resolver and local notification presenter.
 
-Feature/platform modules consume core contracts. Retrofit and Room details do not leak into Compose UI.
-
-## Monorepo boundaries
-
-- `apps/android`: Android runtime and UI.
-- `apps/api`: HTTP delivery and orchestration.
-- `packages/phone-domain`: normalization and numbering metadata primitives.
-- `packages/reputation-domain`: reputation calculations.
-- `packages/contracts`: transport types.
-- `services/enrichment-worker`: asynchronous enrichment extension point.
-- `infrastructure`: disposable local services and schema.
+Feature/platform modules consume core contracts; Room and Retrofit details do not leak into Compose.
 
 ## Invariants
 
-A phone number is not modeled as a person. Identity is represented by expiring claims backed by evidence. Numbering-region metadata is not current device location. Precise live location and private residential-address discovery are outside the product boundary.
+A phone number is not modeled as a person. Identity is an expiring evidence-backed claim. Reputation reports are claims about call behavior, not verified identity. No component may turn numbering metadata into a claim of live GPS position or private residential location.
